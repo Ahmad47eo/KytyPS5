@@ -367,10 +367,14 @@ void TestCAbiStepAndRun() {
     size_t steps = 0;
     const uint32_t runResult = kyty_ios_core_run(
         &state, code.data(), code.size(), 0x8000, 4, &steps);
+    uint64_t selfTestRax = 0;
+    size_t selfTestSteps = 0;
+    const int selfTest = kyty_ios_core_self_test(&selfTestRax, &selfTestSteps);
     Check(kyty_ios_core_c_api_version() == 1 && stepOkay &&
           runResult == KYTY_IOS_CORE_MEMORY_FAULT && steps == 2 &&
-          state.gpr[0] == 43 && state.rip == 0x800E,
-          "C ABI exposes interpreter step/run and synchronizes register state");
+          state.gpr[0] == 43 && state.rip == 0x800E &&
+          selfTest == 1 && selfTestRax == 43 && selfTestSteps == 2,
+          "C ABI exposes step/run and deterministic diagnostic for native front ends");
 }
 
 void TestInvalidArguments() {
