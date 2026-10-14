@@ -39,17 +39,6 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate --spec ios/project.yml --project ios
 
-      - name: Build iPhone app shell (unsigned)
-        run: |
-          xcodebuild \
-            -project ios/KytyPS5-iOS.xcodeproj \
-            -scheme KytyPS5-iOS \
-            -sdk iphoneos \
-            -configuration Release \
-            -derivedDataPath build/DerivedData \
-            CODE_SIGNING_ALLOWED=NO \
-            build
-
       - name: Configure native iOS ARM64 C++ probe
         run: |
           cmake -S ios/port-probe \
@@ -91,6 +80,35 @@ jobs:
 
       - name: Compile first x86-64 interpreter core for iOS ARM64
         run: cmake --build build/ios-arm64-core --config Release
+
+      - name: Collect iOS ARM64 interpreter and decoder libraries
+        run: |
+          mkdir -p build/ios-libs
+          CORE_LIB="$(find build/ios-arm64-core -name 'libkyty_ios_x64_interpreter.a' -print -quit)"
+          ZYDIS_LIB="$(find build/ios-arm64-core -name 'libZydis.a' -print -quit)"
+          ZYCORE_LIB="$(find build/ios-arm64-core -name 'libZycore.a' -print -quit)"
+          test -n "$CORE_LIB"
+          test -n "$ZYDIS_LIB"
+          test -n "$ZYCORE_LIB"
+          cp "$CORE_LIB" build/ios-libs/
+          cp "$ZYDIS_LIB" build/ios-libs/
+          cp "$ZYCORE_LIB" build/ios-libs/
+          ls -lh build/ios-libs
+
+      - name: Build iPhone app linked to native interpreter (unsigned)
+        run: |
+          xcodebuild \
+            -project ios/KytyPS5-iOS.xcodeproj \
+            -scheme KytyPS5-iOS \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath build/DerivedData \
+            SWIFT_OBJC_BRIDGING_HEADER="$(pwd)/ios/KytyPS5-iOS/KytyPS5-iOS-Bridging-Header.h" \
+            HEADER_SEARCH_PATHS="$(pwd)/ios/arm64-core" \
+            LIBRARY_SEARCH_PATHS="$(pwd)/build/ios-libs" \
+            OTHER_LDFLAGS="-lkyty_ios_x64_interpreter -lZydis -lZycore" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
 
       - name: Configure host-side interpreter tests
         run: cmake -S ios/arm64-core/tests -B build/ios-core-tests -DCMAKE_BUILD_TYPE=Release
