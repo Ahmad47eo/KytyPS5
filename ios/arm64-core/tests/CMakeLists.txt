@@ -26,6 +26,7 @@ FetchContent_MakeAvailable(zydis)
 get_filename_component(CORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 add_library(kyty_ios_core_under_test STATIC
     "${CORE_DIR}/x64_interpreter.cpp"
+    "${CORE_DIR}/ios_core_c_api.cpp"
 )
 target_include_directories(kyty_ios_core_under_test PUBLIC "${CORE_DIR}")
 target_link_libraries(kyty_ios_core_under_test PUBLIC Zydis)
