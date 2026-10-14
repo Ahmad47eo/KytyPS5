@@ -10,6 +10,8 @@ struct KytyPS5App: App {
 }
 
 struct ContentView: View {
+    @State private var coreDiagnostic = "Not run yet"
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -43,6 +45,26 @@ struct ContentView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 4)
+                    }
+
+                    GroupBox("Native core diagnostic") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Runs a tiny built-in instruction test against the native interpreter. This is a core smoke test, not a PS5 game test.")
+                                .font(.subheadline)
+                            Button("Run core self-test") {
+                                var resultRax: UInt64 = 0
+                                var steps: Int = 0
+                                let passed = kyty_ios_core_self_test(&resultRax, &steps) == 1
+                                coreDiagnostic = passed
+                                    ? "PASS — RAX = \(resultRax), instructions = \(steps)"
+                                    : "FAIL — native core diagnostic did not match expected result"
+                            }
+                            .buttonStyle(.borderedProminent)
+                            Text(coreDiagnostic)
+                                .font(.footnote.monospaced())
+                                .textSelection(.enabled)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
                     GroupBox("Why games do not run yet") {
