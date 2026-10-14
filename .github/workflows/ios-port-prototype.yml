@@ -88,6 +88,15 @@ jobs:
       - name: Compile first x86-64 interpreter core for iOS ARM64
         run: cmake --build build/ios-arm64-core --config Release
 
+      - name: Configure host-side interpreter tests
+        run: cmake -S ios/arm64-core/tests -B build/ios-core-tests -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build host-side interpreter tests
+        run: cmake --build build/ios-core-tests --config Release
+
+      - name: Run interpreter unit tests
+        run: ctest --test-dir build/ios-core-tests --build-config Release --output-on-failure
+
       - name: Package app bundle for inspection
         run: |
           APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/KytyPS5.app"
