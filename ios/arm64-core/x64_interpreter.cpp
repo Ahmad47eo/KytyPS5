@@ -64,7 +64,6 @@ StepReport Step(X64State* state, const uint8_t* code, size_t code_size) {
             return Report(StepResult::Executed, ins.length, "nop");
 
         case ZYDIS_MNEMONIC_RET:
-        case ZYDIS_MNEMONIC_RETN:
             return Report(StepResult::Halted, ins.length, "ret");
 
         case ZYDIS_MNEMONIC_MOV: {
