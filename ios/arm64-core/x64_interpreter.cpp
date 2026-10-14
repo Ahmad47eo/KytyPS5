@@ -127,21 +127,42 @@ StepReport Step(X64State* state, const uint8_t* code, size_t code_size) {
         case ZYDIS_MNEMONIC_MOV: {
             if (ins.operand_count_visible < 2 ||
                 operands[0].type != ZYDIS_OPERAND_TYPE_REGISTER ||
-                operands[0].size != 64 ||
-                operands[1].type != ZYDIS_OPERAND_TYPE_IMMEDIATE) {
+                operands[0].size != 64) {
                 return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
             }
             auto* dst = RegisterPointer(*state, operands[0].reg.value);
-            if (dst == nullptr) {
-                return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
-            }
             uint64_t value = 0;
-            if (!Read64BitSource(*state, operands[1], value)) {
+            if (dst == nullptr || !Read64BitSource(*state, operands[1], value)) {
                 return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
             }
             *dst = value;
             state->rip += ins.length;
             return Report(StepResult::Executed, ins.length, "mov");
+        }
+
+        case ZYDIS_MNEMONIC_XOR: {
+            if (ins.operand_count_visible < 2 ||
+                operands[0].type != ZYDIS_OPERAND_TYPE_REGISTER ||
+                operands[0].size != 64) {
+                return Report(StepResult::UnsupportedInstruction, ins.length, "xor");
+            }
+            auto* dst = RegisterPointer(*state, operands[0].reg.value);
+            uint64_t rhs = 0;
+            if (dst == nullptr || !Read64BitSource(*state, operands[1], rhs)) {
+                return Report(StepResult::UnsupportedInstruction, ins.length, "xor");
+            }
+            const uint64_t result = *dst ^ rhs;
+            uint64_t flags = state->rflags & ~(ARITHMETIC_FLAGS);
+            if (result == 0) flags |= FLAG_ZF;
+            if ((result >> 63) != 0) flags |= FLAG_SF;
+            uint8_t low = static_cast<uint8_t>(result);
+            low ^= static_cast<uint8_t>(low >> 4);
+            low &= 0x0F;
+            if (((0x6996U >> low) & 1U) == 0) flags |= FLAG_PF;
+            state->rflags = flags | 0x2;
+            *dst = result;
+            state->rip += ins.length;
+            return Report(StepResult::Executed, ins.length, "xor");
         }
 
         case ZYDIS_MNEMONIC_ADD:
