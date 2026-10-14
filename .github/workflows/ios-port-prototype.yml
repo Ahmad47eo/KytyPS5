@@ -1,0 +1,61 @@
+name: iOS Port Prototype
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ios-port-prototype
+    paths:
+      - "ios/**"
+      - "docs/IOS_PORTING.md"
+      - ".github/workflows/ios-port-prototype.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios-shell:
+    name: Build unsigned iOS app shell
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Select Xcode
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec ios/project.yml --project ios/KytyPS5-iOS.xcodeproj
+
+      - name: Build for iPhone (unsigned)
+        run: |
+          xcodebuild \
+            -project ios/KytyPS5-iOS.xcodeproj \
+            -scheme KytyPS5-iOS \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package app bundle for inspection
+        run: |
+          APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/KytyPS5.app"
+          test -d "$APP_PATH"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" build/KytyPS5-unsigned-app.zip
+
+      - name: Upload unsigned app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: KytyPS5-iOS-unsigned-shell
+          path: build/KytyPS5-unsigned-app.zip
+          if-no-files-found: error
+          retention-days: 7
