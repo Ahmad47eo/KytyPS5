@@ -326,48 +326,49 @@ StepReport Step(X64State* state, const uint8_t* code, size_t code_size) {
                 return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
             }
 
-            // Register destination: immediate/register source or bounded guest-memory load.
-            if (operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER &&
-                operands[0].size == 64) {
-                auto* dst = RegisterPointer(*state, operands[0].reg.value);
-                if (dst == nullptr) {
-                    return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
-                }
-                uint64_t value = 0;
-                if (operands[1].type == ZYDIS_OPERAND_TYPE_MEMORY) {
+            const auto& dst = operands[0];
+            const auto& src = operands[1];
+            const uint8_t width = static_cast<uint8_t>(dst.size);
+            if (width != 8 && width != 16 && width != 32 && width != 64) {
+                return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
+            }
+            const size_t bytes = width / 8U;
+            uint64_t value = 0;
+
+            if (dst.type == ZYDIS_OPERAND_TYPE_REGISTER) {
+                if (src.type == ZYDIS_OPERAND_TYPE_MEMORY) {
                     uint64_t address = 0;
                     size_t offset = 0;
-                    if (!EffectiveAddress(*state, ins, operands[1], address)) {
+                    if (!EffectiveAddress(*state, ins, src, address)) {
                         return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
                     }
-                    if (!MemoryOffset(*state, address, offset)) {
+                    if (!MemoryOffsetSized(*state, address, bytes, offset)) {
                         return Report(StepResult::MemoryFault, ins.length, "mov");
                     }
-                    std::memcpy(&value, state->memory + offset, sizeof(value));
-                } else if (!Read64BitSource(*state, operands[1], value)) {
+                    std::memcpy(&value, state->memory + offset, bytes);
+                } else if (!ReadOperandValue(*state, src, width, value)) {
                     return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
                 }
-                *dst = value;
+                if (!WriteRegister(*state, dst.reg.value, width, value)) {
+                    return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
+                }
                 state->rip += ins.length;
                 return Report(StepResult::Executed, ins.length, "mov");
             }
 
-            // Bounded guest-memory store from a 64-bit register.
-            if (operands[0].type == ZYDIS_OPERAND_TYPE_MEMORY &&
-                operands[0].size == 64 &&
-                operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER &&
-                operands[1].size == 64) {
-                const auto* src = RegisterPointer(*state, operands[1].reg.value);
+            if (dst.type == ZYDIS_OPERAND_TYPE_MEMORY) {
                 uint64_t address = 0;
                 size_t offset = 0;
-                if (src == nullptr ||
-                    !EffectiveAddress(*state, ins, operands[0], address)) {
+                if (!EffectiveAddress(*state, ins, dst, address)) {
                     return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
                 }
-                if (!MemoryOffset(*state, address, offset)) {
+                if (!MemoryOffsetSized(*state, address, bytes, offset)) {
                     return Report(StepResult::MemoryFault, ins.length, "mov");
                 }
-                std::memcpy(state->memory + offset, src, sizeof(*src));
+                if (!ReadOperandValue(*state, src, width, value)) {
+                    return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
+                }
+                std::memcpy(state->memory + offset, &value, bytes);
                 state->rip += ins.length;
                 return Report(StepResult::Executed, ins.length, "mov");
             }
