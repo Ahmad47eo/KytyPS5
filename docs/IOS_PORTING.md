@@ -38,3 +38,16 @@ The unsigned .app bundle is not an installable IPA. Signing and installation are
 - Do not describe a successful shell build or toolchain probe as successful PS5 emulation.
 - Keep changes focused and verify them on CI before claiming they work.
 - Preserve upstream license notices and comply with GPL-2.0-only when redistributing modified binaries or source.
+
+
+## Interpreter milestone: bounded guest memory
+
+The prototype interpreter now supports a deliberately small flat guest-memory window attached to `X64State`. The window maps guest virtual addresses beginning at `memory_base` onto a caller-owned byte buffer of `memory_size` bytes. The current implementation uses checked bounds and `memcpy` for 64-bit MOV loads/stores, returning `MemoryFault` for missing or out-of-range memory instead of dereferencing an invalid host pointer.
+
+The supported instruction subset now includes NOP, 64-bit MOV immediate/register/memory forms, register/immediate ADD and SUB, CMP, XOR, and JMP/JZ/JNZ. Arithmetic flags are still a partial implementation, and many architectural details are not implemented. RET still halts the prototype rather than popping a guest return address. This remains a test harness, not a connected PS5 runtime.
+
+Next engineering steps:
+1. Validate all new memory tests on the macOS Actions runner and fix any portability or decoder mismatches.
+2. Add width-correct 8/16/32-bit register semantics and memory forms with precise x86 zero-extension/sign-extension rules.
+3. Add stack operations and a real guest return path, then build a small execution loop with instruction and fault limits.
+4. Design a proper guest address-space abstraction before connecting any upstream loader code.
