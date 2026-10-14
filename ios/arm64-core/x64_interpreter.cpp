@@ -98,28 +98,13 @@ StepReport Report(StepResult result, uint8_t length, const char* name) {
     return out;
 }
 
-bool Read64BitSource(X64State& state, const ZydisDecodedOperand& operand, uint64_t& value) {
-    if (operand.type == ZYDIS_OPERAND_TYPE_REGISTER && operand.size == 64) {
-        const auto* reg = RegisterPointer(state, operand.reg.value);
-        if (reg == nullptr) {
-            return false;
-        }
-        value = *reg;
-        return true;
-    }
-    if (operand.type == ZYDIS_OPERAND_TYPE_IMMEDIATE) {
-        // Zydis marks sign-extended immediates as signed; preserving that matters
-        // for encodings such as ADD RAX, -1.
-        value = operand.imm.is_signed
-                    ? static_cast<uint64_t>(operand.imm.value.s)
-                    : operand.imm.value.u;
-        return true;
-    }
-    return false;
-}
-
 void SetArithmeticFlags(X64State& state, uint64_t lhs, uint64_t rhs,
-                        uint64_t result, bool subtract, bool carry) {
+                        uint64_t result, bool subtract, bool carry, uint8_t width) {
+    const uint64_t mask = WidthMask(width);
+    const uint64_t signBit = 1ULL << (width - 1U);
+    lhs &= mask;
+    rhs &= mask;
+    result &= mask;
     uint64_t flags = state.rflags & ~ARITHMETIC_FLAGS;
     if (carry) {
         flags |= FLAG_CF;
@@ -127,7 +112,7 @@ void SetArithmeticFlags(X64State& state, uint64_t lhs, uint64_t rhs,
     if (result == 0) {
         flags |= FLAG_ZF;
     }
-    if ((result >> 63) != 0) {
+    if ((result & signBit) != 0) {
         flags |= FLAG_SF;
     }
     // x86 parity is even parity of the low result byte.
@@ -138,8 +123,8 @@ void SetArithmeticFlags(X64State& state, uint64_t lhs, uint64_t rhs,
         flags |= FLAG_PF;
     }
     const bool overflow = subtract
-        ? (((lhs ^ rhs) & (lhs ^ result) & (1ULL << 63)) != 0)
-        : (((~(lhs ^ rhs)) & (lhs ^ result) & (1ULL << 63)) != 0);
+        ? (((lhs ^ rhs) & (lhs ^ result) & signBit) != 0)
+        : (((~(lhs ^ rhs)) & (lhs ^ result) & signBit) != 0);
     if (overflow) {
         flags |= FLAG_OF;
     }
