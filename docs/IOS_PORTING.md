@@ -63,3 +63,10 @@ This is still only a foundation: the current runner reads from one contiguous co
 ## Stack operation validation
 
 The host-side test suite now covers 64-bit LEA effective-address calculation, a register PUSH/POP round trip, and checks that out-of-range stack accesses report `MemoryFault` without partially changing registers, the stack pointer, or the instruction pointer. These tests are run by the iOS Port Prototype workflow on each relevant branch update. Passing them validates this small interpreter subset only; it does not validate PS5 compatibility.
+
+
+## Native C ABI bridge
+
+A small C-compatible front-end API now wraps the interpreter's single-step and bounded-run functions. It uses a fixed general-purpose-register order and caller-owned memory, so Swift or another native UI can call the core without importing C++ namespaces or C++ data types. The bridge is covered by host-side tests and compiled as part of the ARM64 core.
+
+This API is not yet linked into the SwiftUI app target. The next integration task is to link the iOS static libraries into the app and add a visible, non-game diagnostic that runs a tiny test program. That will verify end-to-end app-to-core wiring without claiming PS5 game compatibility.
