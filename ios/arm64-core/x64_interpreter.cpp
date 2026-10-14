@@ -154,6 +154,50 @@ StepReport Step(X64State* state, const uint8_t* code, size_t code_size) {
     }
 
     switch (ins.mnemonic) {
+        case ZYDIS_MNEMONIC_PUSH: {
+            if (ins.operand_count_visible < 1 || operands[0].size != 64) {
+                return Report(StepResult::UnsupportedInstruction, ins.length, "push");
+            }
+            uint64_t value = 0;
+            if (!Read64BitSource(*state, operands[0], value)) {
+                return Report(StepResult::UnsupportedInstruction, ins.length, "push");
+            }
+            if (state->rsp < sizeof(value)) {
+                return Report(StepResult::MemoryFault, ins.length, "push");
+            }
+            const uint64_t new_rsp = state->rsp - sizeof(value);
+            size_t offset = 0;
+            if (!MemoryOffset(*state, new_rsp, offset)) {
+                return Report(StepResult::MemoryFault, ins.length, "push");
+            }
+            std::memcpy(state->memory + offset, &value, sizeof(value));
+            state->rsp = new_rsp;
+            state->rip += ins.length;
+            return Report(StepResult::Executed, ins.length, "push");
+        }
+
+        case ZYDIS_MNEMONIC_POP: {
+            if (ins.operand_count_visible < 1 ||
+                operands[0].type != ZYDIS_OPERAND_TYPE_REGISTER ||
+                operands[0].size != 64) {
+                return Report(StepResult::UnsupportedInstruction, ins.length, "pop");
+            }
+            auto* dst = RegisterPointer(*state, operands[0].reg.value);
+            if (dst == nullptr) {
+                return Report(StepResult::UnsupportedInstruction, ins.length, "pop");
+            }
+            size_t offset = 0;
+            if (!MemoryOffset(*state, state->rsp, offset)) {
+                return Report(StepResult::MemoryFault, ins.length, "pop");
+            }
+            uint64_t value = 0;
+            std::memcpy(&value, state->memory + offset, sizeof(value));
+            *dst = value;
+            state->rsp += sizeof(value);
+            state->rip += ins.length;
+            return Report(StepResult::Executed, ins.length, "pop");
+        }
+
         case ZYDIS_MNEMONIC_NOP:
             state->rip += ins.length;
             return Report(StepResult::Executed, ins.length, "nop");
