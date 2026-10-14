@@ -377,6 +377,71 @@ void TestCAbiStepAndRun() {
           "C ABI exposes step/run and deterministic diagnostic for native front ends");
 }
 
+void TestMovEaxZeroExtends() {
+    KytyIOSCore::X64State state{};
+    state.rax = 0xFFFFFFFFABCDEF01ULL;
+    constexpr std::array<uint8_t, 5> code{0xB8, 0xFF, 0xFF, 0xFF, 0xFF}; // mov eax, 0xffffffff
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          state.rax == 0x00000000FFFFFFFFULL && state.rip == 5,
+          "MOV EAX zero-extends the 32-bit result into RAX");
+}
+
+void TestMovAxPreservesUpperBits() {
+    KytyIOSCore::X64State state{};
+    state.rax = 0x1122334455667788ULL;
+    constexpr std::array<uint8_t, 4> code{0x66, 0xB8, 0x34, 0x12}; // mov ax, 0x1234
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          state.rax == 0x1122334455661234ULL && state.rip == 4,
+          "MOV AX preserves upper RAX bits");
+}
+
+void TestMovAhUpdatesHighByte() {
+    KytyIOSCore::X64State state{};
+    state.rax = 0x1122334455667788ULL;
+    constexpr std::array<uint8_t, 2> code{0xB4, 0xAA}; // mov ah, 0xaa
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          state.rax == 0x112233445566AA88ULL && state.rip == 2,
+          "MOV AH updates only bits 8-15 of RAX");
+}
+
+void TestAddEaxZeroExtends() {
+    KytyIOSCore::X64State state{};
+    state.rax = 0xABCDEF01FFFFFFFFULL;
+    constexpr std::array<uint8_t, 3> code{0x83, 0xC0, 0x01}; // add eax, 1
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          state.rax == 0 && (state.rflags & (1ULL << 6)) != 0 && state.rip == 3,
+          "ADD EAX wraps at 32 bits and zero-extends the result");
+}
+
+void TestAddAlPreservesUpperBits() {
+    KytyIOSCore::X64State state{};
+    state.rax = 0x11223344556677FFULL;
+    constexpr std::array<uint8_t, 2> code{0x04, 0x01}; // add al, 1
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          state.rax == 0x1122334455667700ULL && state.rip == 2,
+          "ADD AL wraps at 8 bits and preserves the other RAX bits");
+}
+
+void TestByteGuestMemoryStore() {
+    KytyIOSCore::X64State state{};
+    std::array<uint8_t, 8> memory{};
+    state.memory = memory.data();
+    state.memory_size = memory.size();
+    state.memory_base = 0x2000;
+    state.rbx = 0x2003;
+    state.rax = 0xAA;
+    constexpr std::array<uint8_t, 2> code{0x88, 0x03}; // mov byte ptr [rbx], al
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          memory[3] == 0xAA && state.rip == 2,
+          "MOV stores a single byte within bounded guest memory");
+}
+
 void TestInvalidArguments() {
     KytyIOSCore::X64State state{};
     constexpr std::array<uint8_t, 1> code{0x90};
@@ -426,6 +491,12 @@ int main() {
     TestRunLoopExecutesMultipleInstructions();
     TestRunLoopHonorsStepLimit();
     TestCAbiStepAndRun();
+    TestMovEaxZeroExtends();
+    TestMovAxPreservesUpperBits();
+    TestMovAhUpdatesHighByte();
+    TestAddEaxZeroExtends();
+    TestAddAlPreservesUpperBits();
+    TestByteGuestMemoryStore();
     TestInvalidArguments();
     TestDecodeError();
 
