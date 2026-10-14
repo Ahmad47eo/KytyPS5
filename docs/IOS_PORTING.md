@@ -4,7 +4,7 @@
 
 The upstream KytyPS5 project documents Windows x64 and Linux x64 as primary targets, with experimental macOS support. The macOS build is x86-64 and uses Rosetta 2. It is not an iOS build.
 
-This branch starts a separate native iOS application shell. The shell is a milestone for app/toolchain packaging only; it does not contain a working PS5 emulator core and cannot run PS5 games.
+This branch contains a native SwiftUI app shell and a separate C++20 iOS ARM64 toolchain probe. The shell is only a packaging milestone; it does not contain a working PS5 emulator core and cannot run PS5 games. The C++ probe checks that the Apple toolchain can compile a small native ARM64 static library for iPhoneOS.
 
 ## Why a direct build is not enough
 
@@ -17,7 +17,7 @@ This branch starts a separate native iOS application shell. The shell is a miles
 ## Milestones
 
 1. Build and package the native SwiftUI shell on a macOS CI runner.
-2. Create a minimal iOS ARM64 C/C++ toolchain probe and identify compile-time platform blockers.
+2. Compile a minimal native C++20 static library for iOS ARM64.
 3. Separate platform-independent emulator code from desktop-specific code.
 4. Inventory x86-64 translation/JIT, Vulkan extensions, and OS API dependencies.
 5. Port one isolated core component and add a small automated test.
@@ -26,15 +26,15 @@ This branch starts a separate native iOS application shell. The shell is a miles
 8. Produce a signed IPA only after a real iOS app target and signing route are available.
 9. Test startup and legal user-supplied game data; report exact compatibility results.
 
-## Build the prototype shell
+## CI build
 
-On a macOS runner with Xcode, install XcodeGen, generate the project from ios/project.yml, then build the KytyPS5-iOS scheme with the iPhoneOS SDK and CODE_SIGNING_ALLOWED=NO.
+The iOS Port Prototype workflow generates the Xcode project, compiles the unsigned SwiftUI shell, then configures and compiles the ARM64 C++ probe with the iPhoneOS SDK. It uploads both build artifacts for inspection.
 
-The current workflow uploads the unsigned .app bundle as a CI artifact for inspection. An unsigned app bundle is not an installable IPA. Signing and installation are a later milestone.
+The unsigned .app bundle is not an installable IPA. Signing and installation are a later milestone.
 
 ## Project rules
 
 - Do not include copyrighted PS5 games, keys, or console firmware.
-- Do not describe a successful shell build as successful PS5 emulation.
+- Do not describe a successful shell build or toolchain probe as successful PS5 emulation.
 - Keep changes focused and verify them on CI before claiming they work.
 - Preserve upstream license notices and comply with GPL-2.0-only when redistributing modified binaries or source.
