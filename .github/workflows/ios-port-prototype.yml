@@ -106,7 +106,7 @@ jobs:
             SWIFT_OBJC_BRIDGING_HEADER="$(pwd)/ios/KytyPS5-iOS/KytyPS5-iOS-Bridging-Header.h" \
             HEADER_SEARCH_PATHS="$(pwd)/ios/arm64-core" \
             LIBRARY_SEARCH_PATHS="$(pwd)/build/ios-libs" \
-            OTHER_LDFLAGS="-lkyty_ios_x64_interpreter -lZydis -lZycore" \
+            OTHER_LDFLAGS="-lkyty_ios_x64_interpreter -lZydis -lZycore -lc++" \
             CODE_SIGNING_ALLOWED=NO \
             build
 
