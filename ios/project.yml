@@ -1,0 +1,21 @@
+name: KytyPS5-iOS
+options:
+  bundleIdPrefix: com.ahmad47eo
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  KytyPS5-iOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: KytyPS5-iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ahmad47eo.kytyps5ios
+        PRODUCT_NAME: KytyPS5
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: "KytyPS5 Port"
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        CODE_SIGNING_ALLOWED: NO
