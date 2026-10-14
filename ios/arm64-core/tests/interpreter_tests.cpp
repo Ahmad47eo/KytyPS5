@@ -285,16 +285,26 @@ void TestAddOverflowFlag() {
           "ADD models signed overflow and sign flags");
 }
 
+void TestLeaComputesEffectiveAddress() {
+    KytyIOSCore::X64State state{};
+    state.rbx = 0x1000;
+    constexpr std::array<uint8_t, 4> code{0x48, 0x8D, 0x43, 0x08}; // lea rax, [rbx + 8]
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          state.rax == 0x1008 && state.rip == 4,
+          "LEA computes a bounded-form effective address without reading memory");
+}
+
 void TestUnsupportedInstructionDoesNotMutateState() {
     KytyIOSCore::X64State state{};
     state.rax = 7;
     state.rbx = 9;
     state.rip = 0x3000;
-    constexpr std::array<uint8_t, 3> code{0x48, 0x8D, 0x03}; // lea rax, [rbx]
+    constexpr std::array<uint8_t, 4> code{0x48, 0x0F, 0xAF, 0xC3}; // imul rax, rbx
     const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
     Check(report.result == KytyIOSCore::StepResult::UnsupportedInstruction &&
           state.rax == 7 && state.rip == 0x3000,
-          "Unsupported LEA leaves state unchanged");
+          "Unsupported IMUL leaves state unchanged");
 }
 
 void TestRunLoopExecutesMultipleInstructions() {
@@ -363,6 +373,7 @@ int main() {
     TestJzNotTaken();
     TestJnzTaken();
     TestAddOverflowFlag();
+    TestLeaComputesEffectiveAddress();
     TestUnsupportedInstructionDoesNotMutateState();
     TestRunLoopExecutesMultipleInstructions();
     TestRunLoopHonorsStepLimit();
