@@ -378,25 +378,30 @@ StepReport Step(X64State* state, const uint8_t* code, size_t code_size) {
 
         case ZYDIS_MNEMONIC_XOR: {
             if (ins.operand_count_visible < 2 ||
-                operands[0].type != ZYDIS_OPERAND_TYPE_REGISTER ||
-                operands[0].size != 64) {
+                operands[0].type != ZYDIS_OPERAND_TYPE_REGISTER) {
                 return Report(StepResult::UnsupportedInstruction, ins.length, "xor");
             }
-            auto* dst = RegisterPointer(*state, operands[0].reg.value);
-            uint64_t rhs = 0;
-            if (dst == nullptr || !Read64BitSource(*state, operands[1], rhs)) {
+            const uint8_t width = static_cast<uint8_t>(operands[0].size);
+            if (width != 8 && width != 16 && width != 32 && width != 64) {
                 return Report(StepResult::UnsupportedInstruction, ins.length, "xor");
             }
-            const uint64_t result = *dst ^ rhs;
-            uint64_t flags = state->rflags & ~(ARITHMETIC_FLAGS);
+            uint64_t lhs = 0, rhs = 0;
+            if (!ReadRegister(*state, operands[0].reg.value, width, lhs) ||
+                !ReadOperandValue(*state, operands[1], width, rhs)) {
+                return Report(StepResult::UnsupportedInstruction, ins.length, "xor");
+            }
+            const uint64_t result = (lhs ^ rhs) & WidthMask(width);
+            uint64_t flags = state->rflags & ~ARITHMETIC_FLAGS;
             if (result == 0) flags |= FLAG_ZF;
-            if ((result >> 63) != 0) flags |= FLAG_SF;
+            if ((result & (1ULL << (width - 1U))) != 0) flags |= FLAG_SF;
             uint8_t low = static_cast<uint8_t>(result);
             low ^= static_cast<uint8_t>(low >> 4);
             low &= 0x0F;
             if (((0x6996U >> low) & 1U) == 0) flags |= FLAG_PF;
             state->rflags = flags | 0x2;
-            *dst = result;
+            if (!WriteRegister(*state, operands[0].reg.value, width, result)) {
+                return Report(StepResult::UnsupportedInstruction, ins.length, "xor");
+            }
             state->rip += ins.length;
             return Report(StepResult::Executed, ins.length, "xor");
         }
@@ -407,22 +412,27 @@ StepReport Step(X64State* state, const uint8_t* code, size_t code_size) {
             const char* name = ins.mnemonic == ZYDIS_MNEMONIC_ADD ? "add" :
                                ins.mnemonic == ZYDIS_MNEMONIC_SUB ? "sub" : "cmp";
             if (ins.operand_count_visible < 2 ||
-                operands[0].type != ZYDIS_OPERAND_TYPE_REGISTER ||
-                operands[0].size != 64) {
+                operands[0].type != ZYDIS_OPERAND_TYPE_REGISTER) {
                 return Report(StepResult::UnsupportedInstruction, ins.length, name);
             }
-            auto* dst = RegisterPointer(*state, operands[0].reg.value);
-            uint64_t rhs = 0;
-            if (dst == nullptr || !Read64BitSource(*state, operands[1], rhs)) {
+            const uint8_t width = static_cast<uint8_t>(operands[0].size);
+            if (width != 8 && width != 16 && width != 32 && width != 64) {
                 return Report(StepResult::UnsupportedInstruction, ins.length, name);
             }
-            const uint64_t lhs = *dst;
+            uint64_t lhs = 0, rhs = 0;
+            if (!ReadRegister(*state, operands[0].reg.value, width, lhs) ||
+                !ReadOperandValue(*state, operands[1], width, rhs)) {
+                return Report(StepResult::UnsupportedInstruction, ins.length, name);
+            }
+            const uint64_t mask = WidthMask(width);
             const bool subtract = ins.mnemonic != ZYDIS_MNEMONIC_ADD;
-            const uint64_t result = subtract ? lhs - rhs : lhs + rhs;
-            const bool carry = subtract ? lhs < rhs : result < lhs;
-            SetArithmeticFlags(*state, lhs, rhs, result, subtract, carry);
-            if (ins.mnemonic != ZYDIS_MNEMONIC_CMP) {
-                *dst = result;
+            const uint64_t raw = subtract ? lhs - rhs : lhs + rhs;
+            const uint64_t result = raw & mask;
+            const bool carry = subtract ? lhs < rhs : raw > mask;
+            SetArithmeticFlags(*state, lhs, rhs, result, subtract, carry, width);
+            if (ins.mnemonic != ZYDIS_MNEMONIC_CMP &&
+                !WriteRegister(*state, operands[0].reg.value, width, result)) {
+                return Report(StepResult::UnsupportedInstruction, ins.length, name);
             }
             state->rip += ins.length;
             return Report(StepResult::Executed, ins.length, name);
