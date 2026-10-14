@@ -15,9 +15,9 @@ permissions:
 
 jobs:
   build-ios-shell:
-    name: Build iOS shell and ARM64 probe
+    name: Build iOS shell, ARM64 probe, and Zydis
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -59,6 +59,20 @@ jobs:
 
       - name: Compile native iOS ARM64 C++ probe
         run: cmake --build build/ios-arm64-probe --config Release
+
+      - name: Configure pinned Zydis decoder for iOS ARM64
+        run: |
+          cmake -S ios/port-dependencies \
+            -B build/ios-zydis \
+            -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 \
+            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
+
+      - name: Compile pinned Zydis decoder for iOS ARM64
+        run: cmake --build build/ios-zydis --config Release
 
       - name: Package app bundle for inspection
         run: |
