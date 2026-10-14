@@ -1,11 +1,17 @@
 #include "x64_interpreter.h"
 
 #include <Zydis/Zydis.h>
-#include <algorithm>
 #include <cstring>
 
 namespace KytyIOSCore {
 namespace {
+
+constexpr uint64_t FLAG_CF = 1ULL << 0;
+constexpr uint64_t FLAG_PF = 1ULL << 2;
+constexpr uint64_t FLAG_ZF = 1ULL << 6;
+constexpr uint64_t FLAG_SF = 1ULL << 7;
+constexpr uint64_t FLAG_OF = 1ULL << 11;
+constexpr uint64_t ARITHMETIC_FLAGS = FLAG_CF | FLAG_PF | FLAG_ZF | FLAG_SF | FLAG_OF;
 
 uint64_t* RegisterPointer(X64State& s, ZydisRegister r) {
     switch (r) {
@@ -39,6 +45,58 @@ StepReport Report(StepResult result, uint8_t length, const char* name) {
     return out;
 }
 
+bool Read64BitSource(X64State& state, const ZydisDecodedOperand& operand, uint64_t& value) {
+    if (operand.type == ZYDIS_OPERAND_TYPE_REGISTER && operand.size == 64) {
+        const auto* reg = RegisterPointer(state, operand.reg.value);
+        if (reg == nullptr) {
+            return false;
+        }
+        value = *reg;
+        return true;
+    }
+    if (operand.type == ZYDIS_OPERAND_TYPE_IMMEDIATE) {
+        // Zydis marks sign-extended immediates as signed; preserving that matters
+        // for encodings such as ADD RAX, -1.
+        value = operand.imm.is_signed
+                    ? static_cast<uint64_t>(operand.imm.value.s)
+                    : operand.imm.value.u;
+        return true;
+    }
+    return false;
+}
+
+void SetArithmeticFlags(X64State& state, uint64_t lhs, uint64_t rhs,
+                        uint64_t result, bool subtract, bool carry) {
+    uint64_t flags = state.rflags & ~ARITHMETIC_FLAGS;
+    if (carry) {
+        flags |= FLAG_CF;
+    }
+    if (result == 0) {
+        flags |= FLAG_ZF;
+    }
+    if ((result >> 63) != 0) {
+        flags |= FLAG_SF;
+    }
+    // x86 parity is even parity of the low result byte.
+    uint8_t low = static_cast<uint8_t>(result);
+    low ^= static_cast<uint8_t>(low >> 4);
+    low &= 0x0F;
+    if (((0x6996U >> low) & 1U) == 0) {
+        flags |= FLAG_PF;
+    }
+    const bool overflow = subtract
+        ? (((lhs ^ rhs) & (lhs ^ result) & (1ULL << 63)) != 0)
+        : (((~(lhs ^ rhs)) & (lhs ^ result) & (1ULL << 63)) != 0);
+    if (overflow) {
+        flags |= FLAG_OF;
+    }
+    state.rflags = flags | 0x2;
+}
+
+bool IsZero(const X64State& state) {
+    return (state.rflags & FLAG_ZF) != 0;
+}
+
 } // namespace
 
 StepReport Step(X64State* state, const uint8_t* code, size_t code_size) {
@@ -69,38 +127,70 @@ StepReport Step(X64State* state, const uint8_t* code, size_t code_size) {
         case ZYDIS_MNEMONIC_MOV: {
             if (ins.operand_count_visible < 2 ||
                 operands[0].type != ZYDIS_OPERAND_TYPE_REGISTER ||
+                operands[0].size != 64 ||
                 operands[1].type != ZYDIS_OPERAND_TYPE_IMMEDIATE) {
                 return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
             }
             auto* dst = RegisterPointer(*state, operands[0].reg.value);
-            if (dst == nullptr || operands[0].size != 64) {
+            if (dst == nullptr) {
                 return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
             }
-            *dst = static_cast<uint64_t>(operands[1].imm.value.u);
+            uint64_t value = 0;
+            if (!Read64BitSource(*state, operands[1], value)) {
+                return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
+            }
+            *dst = value;
             state->rip += ins.length;
             return Report(StepResult::Executed, ins.length, "mov");
         }
 
         case ZYDIS_MNEMONIC_ADD:
-        case ZYDIS_MNEMONIC_SUB: {
+        case ZYDIS_MNEMONIC_SUB:
+        case ZYDIS_MNEMONIC_CMP: {
+            const char* name = ins.mnemonic == ZYDIS_MNEMONIC_ADD ? "add" :
+                               ins.mnemonic == ZYDIS_MNEMONIC_SUB ? "sub" : "cmp";
             if (ins.operand_count_visible < 2 ||
                 operands[0].type != ZYDIS_OPERAND_TYPE_REGISTER ||
-                operands[1].type != ZYDIS_OPERAND_TYPE_IMMEDIATE ||
                 operands[0].size != 64) {
-                return Report(StepResult::UnsupportedInstruction, ins.length,
-                              ins.mnemonic == ZYDIS_MNEMONIC_ADD ? "add" : "sub");
+                return Report(StepResult::UnsupportedInstruction, ins.length, name);
             }
             auto* dst = RegisterPointer(*state, operands[0].reg.value);
-            if (dst == nullptr) {
-                return Report(StepResult::UnsupportedInstruction, ins.length, "arith");
+            uint64_t rhs = 0;
+            if (dst == nullptr || !Read64BitSource(*state, operands[1], rhs)) {
+                return Report(StepResult::UnsupportedInstruction, ins.length, name);
             }
-            const uint64_t old = *dst;
-            const uint64_t imm = static_cast<uint64_t>(operands[1].imm.value.u);
-            *dst = ins.mnemonic == ZYDIS_MNEMONIC_ADD ? old + imm : old - imm;
-            // Arithmetic flags are intentionally not modelled in this first milestone.
+            const uint64_t lhs = *dst;
+            const bool subtract = ins.mnemonic != ZYDIS_MNEMONIC_ADD;
+            const uint64_t result = subtract ? lhs - rhs : lhs + rhs;
+            const bool carry = subtract ? lhs < rhs : result < lhs;
+            SetArithmeticFlags(*state, lhs, rhs, result, subtract, carry);
+            if (ins.mnemonic != ZYDIS_MNEMONIC_CMP) {
+                *dst = result;
+            }
             state->rip += ins.length;
+            return Report(StepResult::Executed, ins.length, name);
+        }
+
+        case ZYDIS_MNEMONIC_JMP:
+        case ZYDIS_MNEMONIC_JZ:
+        case ZYDIS_MNEMONIC_JNZ: {
+            if (ins.operand_count_visible < 1 ||
+                operands[0].type != ZYDIS_OPERAND_TYPE_IMMEDIATE) {
+                return Report(StepResult::UnsupportedInstruction, ins.length, "jump");
+            }
+            bool take = ins.mnemonic == ZYDIS_MNEMONIC_JMP;
+            if (ins.mnemonic == ZYDIS_MNEMONIC_JZ) {
+                take = IsZero(*state);
+            } else if (ins.mnemonic == ZYDIS_MNEMONIC_JNZ) {
+                take = !IsZero(*state);
+            }
+            const uint64_t next = state->rip + ins.length;
+            state->rip = take
+                ? static_cast<uint64_t>(static_cast<int64_t>(next) + operands[0].imm.value.s)
+                : next;
             return Report(StepResult::Executed, ins.length,
-                          ins.mnemonic == ZYDIS_MNEMONIC_ADD ? "add" : "sub");
+                          ins.mnemonic == ZYDIS_MNEMONIC_JMP ? "jmp" :
+                          ins.mnemonic == ZYDIS_MNEMONIC_JZ ? "jz" : "jnz");
         }
 
         default:
@@ -109,7 +199,7 @@ StepReport Step(X64State* state, const uint8_t* code, size_t code_size) {
 }
 
 extern "C" uint32_t kyty_ios_core_abi_version() {
-    return 1;
+    return 2;
 }
 
 } // namespace KytyIOSCore
