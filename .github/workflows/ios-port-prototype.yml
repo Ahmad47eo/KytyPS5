@@ -33,7 +33,7 @@ jobs:
         run: brew install xcodegen
 
       - name: Generate Xcode project
-        run: xcodegen generate --spec ios/project.yml --project ios/KytyPS5-iOS.xcodeproj
+        run: xcodegen generate --spec ios/project.yml --project ios
 
       - name: Build for iPhone (unsigned)
         run: |
