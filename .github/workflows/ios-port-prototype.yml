@@ -122,3 +122,11 @@ jobs:
           path: build/ios-arm64-probe/Release-iphoneos/libkyty_ios_arm64_probe.a
           if-no-files-found: error
           retention-days: 7
+
+      - name: Upload ARM64 interpreter library
+        uses: actions/upload-artifact@v4
+        with:
+          name: KytyPS5-iOS-ARM64-interpreter
+          path: build/ios-arm64-core/Release-iphoneos/libkyty_ios_x64_interpreter.a
+          if-no-files-found: error
+          retention-days: 7
