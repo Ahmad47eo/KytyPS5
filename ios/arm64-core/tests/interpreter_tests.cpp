@@ -96,6 +96,46 @@ void TestCallPushesReturnAddress() {
           "CALL pushes next RIP and branches to relative target");
 }
 
+void TestPushPopRoundTrip() {
+    KytyIOSCore::X64State state{};
+    std::array<uint8_t, 32> memory{};
+    state.memory = memory.data();
+    state.memory_size = memory.size();
+    state.memory_base = 0x1000;
+    state.rsp = 0x1010;
+    state.rax = 0x1122334455667788ULL;
+    constexpr std::array<uint8_t, 1> pushCode{0x50}; // push rax
+    constexpr std::array<uint8_t, 1> popCode{0x5B};  // pop rbx
+    const auto push = KytyIOSCore::Step(&state, pushCode.data(), pushCode.size());
+    const auto pop = KytyIOSCore::Step(&state, popCode.data(), popCode.size());
+    Check(push.result == KytyIOSCore::StepResult::Executed &&
+          pop.result == KytyIOSCore::StepResult::Executed &&
+          state.rbx == 0x1122334455667788ULL &&
+          state.rsp == 0x1010 && state.rip == 2,
+          "PUSH and POP round-trip a 64-bit register through bounded guest stack");
+}
+
+void TestPushPopBoundsFaults() {
+    KytyIOSCore::X64State state{};
+    std::array<uint8_t, 8> memory{};
+    state.memory = memory.data();
+    state.memory_size = memory.size();
+    state.memory_base = 0x1000;
+    state.rsp = 0x1000;
+    state.rax = 77;
+    state.rip = 0x2000;
+    constexpr std::array<uint8_t, 1> pushCode{0x50};
+    constexpr std::array<uint8_t, 1> popCode{0x5B};
+    const auto push = KytyIOSCore::Step(&state, pushCode.data(), pushCode.size());
+    const bool pushUnchanged = state.rsp == 0x1000 && state.rip == 0x2000;
+    state.rsp = 0x1008;
+    const auto pop = KytyIOSCore::Step(&state, popCode.data(), popCode.size());
+    Check(push.result == KytyIOSCore::StepResult::MemoryFault && pushUnchanged &&
+          pop.result == KytyIOSCore::StepResult::MemoryFault &&
+          state.rbx == 0 && state.rsp == 0x1008 && state.rip == 0x2000,
+          "PUSH and POP contain out-of-bounds stack accesses without partial mutation");
+}
+
 void TestRegisterMove() {
     KytyIOSCore::X64State state{};
     state.rbx = 0x123456789ABCDEF0ULL;
@@ -309,6 +349,8 @@ int main() {
     TestSubImmediate();
     TestRetPopsReturnAddress();
     TestCallPushesReturnAddress();
+    TestPushPopRoundTrip();
+    TestPushPopBoundsFaults();
     TestRegisterMove();
     TestXorRegisterRegister();
     TestRegisterRegisterAdd();
