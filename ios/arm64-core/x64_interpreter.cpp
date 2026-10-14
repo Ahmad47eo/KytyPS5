@@ -324,6 +324,43 @@ StepReport Step(X64State* state, const uint8_t* code, size_t code_size) {
     }
 }
 
+RunReport Run(X64State* state, const uint8_t* code, size_t code_size,
+              uint64_t code_base, size_t max_steps) {
+    RunReport out{};
+    out.result = StepResult::InvalidArgument;
+    out.last_step = Report(StepResult::InvalidArgument, 0, "");
+
+    if (state == nullptr || code == nullptr || code_size == 0) {
+        return out;
+    }
+
+    for (size_t count = 0; count < max_steps; ++count) {
+        if (state->rip < code_base) {
+            out.result = StepResult::MemoryFault;
+            out.steps_executed = count;
+            return out;
+        }
+        const uint64_t delta = state->rip - code_base;
+        if (delta >= code_size) {
+            out.result = StepResult::MemoryFault;
+            out.steps_executed = count;
+            return out;
+        }
+
+        const size_t offset = static_cast<size_t>(delta);
+        out.last_step = Step(state, code + offset, code_size - offset);
+        if (out.last_step.result != StepResult::Executed) {
+            out.result = out.last_step.result;
+            out.steps_executed = count + 1;
+            return out;
+        }
+        out.steps_executed = count + 1;
+    }
+
+    out.result = StepResult::StepLimit;
+    return out;
+}
+
 extern "C" uint32_t kyty_ios_core_abi_version() {
     return 2;
 }
