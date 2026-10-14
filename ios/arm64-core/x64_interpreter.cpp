@@ -152,7 +152,7 @@ bool IsZero(const X64State& state) {
 
 bool EffectiveAddress(const X64State& state, const ZydisDecodedInstruction& ins,
                       const ZydisDecodedOperand& operand, uint64_t& address) {
-    if (operand.type != ZYDIS_OPERAND_TYPE_MEMORY || operand.size != 64) {
+    if (operand.type != ZYDIS_OPERAND_TYPE_MEMORY) {
         return false;
     }
 
@@ -174,6 +174,14 @@ bool EffectiveAddress(const X64State& state, const ZydisDecodedInstruction& ins,
     }
 
     address = base + index + static_cast<uint64_t>(operand.mem.disp.value);
+    return true;
+}
+
+bool MemoryOffsetSized(const X64State& state, uint64_t address, size_t bytes, size_t& offset) {
+    if (state.memory == nullptr || address < state.memory_base || bytes == 0) return false;
+    const uint64_t delta = address - state.memory_base;
+    if (delta > state.memory_size || bytes > state.memory_size - static_cast<size_t>(delta)) return false;
+    offset = static_cast<size_t>(delta);
     return true;
 }
 
