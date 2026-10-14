@@ -26,7 +26,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(zydis)
 
-add_library(kyty_ios_x64_interpreter STATIC x64_interpreter.cpp)
+add_library(kyty_ios_x64_interpreter STATIC x64_interpreter.cpp ios_core_c_api.cpp)
 target_include_directories(kyty_ios_x64_interpreter PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(kyty_ios_x64_interpreter PUBLIC Zydis)
 target_compile_options(kyty_ios_x64_interpreter PRIVATE -Wall -Wextra -Werror)
