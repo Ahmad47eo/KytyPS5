@@ -51,3 +51,10 @@ Next engineering steps:
 2. Add width-correct 8/16/32-bit register semantics and memory forms with precise x86 zero-extension/sign-extension rules.
 3. Add stack operations and a real guest return path, then build a small execution loop with instruction and fault limits.
 4. Design a proper guest address-space abstraction before connecting any upstream loader code.
+
+
+## Guest stack and bounded execution loop
+
+The prototype now implements relative-immediate `CALL` and `RET` using the bounded guest-memory window as a stack, plus a `Run` helper that executes sequential instructions inside a supplied code window. The runner stops on unsupported instructions, faults, leaving the code window, or a configurable instruction budget (`StepLimit`). This helps test control flow without allowing an accidental guest infinite loop to run forever.
+
+This is still only a foundation: the current runner reads from one contiguous code buffer and does not implement virtual-memory page tables, a real ELF/SELF loader, PS5 syscalls, AVX/SIMD, threads, or graphics. The stack implementation only covers the basic 64-bit near-call/return form and needs more validation before upstream integration.
