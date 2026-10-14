@@ -70,3 +70,10 @@ The host-side test suite now covers 64-bit LEA effective-address calculation, a 
 A small C-compatible front-end API now wraps the interpreter's single-step and bounded-run functions. It uses a fixed general-purpose-register order and caller-owned memory, so Swift or another native UI can call the core without importing C++ namespaces or C++ data types. The bridge is covered by host-side tests and compiled as part of the ARM64 core.
 
 This API is not yet linked into the SwiftUI app target. The next integration task is to link the iOS static libraries into the app and add a visible, non-game diagnostic that runs a tiny test program. That will verify end-to-end app-to-core wiring without claiming PS5 game compatibility.
+
+
+## Register-width semantics milestone
+
+The isolated x86-64 interpreter now handles width-aware register reads and writes for the 8-, 16-, 32-, and 64-bit general-purpose register forms used by the implemented instruction subset. In particular, 32-bit destination writes zero-extend to the corresponding 64-bit register, 8- and 16-bit writes preserve unaffected bits, and AH/CH/DH/BH update the high byte. MOV supports bounded 8/16/32/64-bit memory transfers. ADD, SUB, CMP, and XOR use the selected operand width for result masking and the flags currently modeled by this prototype.
+
+Regression tests cover EAX zero-extension, AX preservation, AH updates, 8-bit arithmetic, 32-bit wraparound, and byte-sized guest-memory stores. These are interpreter-unit-test milestones only; they do not connect the interpreter to the upstream Kyty runtime or make PS5 games playable.
