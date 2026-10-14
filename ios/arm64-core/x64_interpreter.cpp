@@ -362,7 +362,7 @@ RunReport Run(X64State* state, const uint8_t* code, size_t code_size,
 }
 
 extern "C" uint32_t kyty_ios_core_abi_version() {
-    return 2;
+    return 3;
 }
 
 } // namespace KytyIOSCore
