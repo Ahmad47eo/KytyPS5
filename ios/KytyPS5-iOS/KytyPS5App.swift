@@ -28,13 +28,15 @@ struct ContentView: View {
                         .padding(.horizontal, 12)
                         .background(.orange.opacity(0.15), in: Capsule())
 
-                    Text("This is the first iPhone-side scaffold. The PS5 emulator core is not connected yet, so this app cannot run PS5 games.")
+                    Text("The native iOS shell and ARM64 interpreter prototype build in CI. The small tested instruction subset is not the upstream Kyty runtime, so this app still cannot run PS5 games.")
                         .font(.body)
 
                     GroupBox("Porting milestones") {
                         VStack(alignment: .leading, spacing: 12) {
                             milestone("Native SwiftUI app shell", complete: true)
-                            milestone("Compile for iOS ARM64", complete: false)
+                            milestone("Compile iOS ARM64 core and Zydis", complete: true)
+                            milestone("Test bounded x86-64 instruction subset", complete: true)
+                            milestone("Connect upstream Kyty runtime", complete: false)
                             milestone("Port core and dependencies", complete: false)
                             milestone("Graphics backend for iOS", complete: false)
                             milestone("Test legal game data", complete: false)
