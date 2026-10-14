@@ -62,4 +62,4 @@ This is still only a foundation: the current runner reads from one contiguous co
 
 ## Stack operation validation
 
-The host-side test suite now covers a 64-bit register PUSH/POP round trip and checks that out-of-range stack accesses report `MemoryFault` without partially changing registers, the stack pointer, or the instruction pointer. These tests are run by the iOS Port Prototype workflow on each relevant branch update. Passing them validates this small interpreter subset only; it does not validate PS5 compatibility.
+The host-side test suite now covers 64-bit LEA effective-address calculation, a register PUSH/POP round trip, and checks that out-of-range stack accesses report `MemoryFault` without partially changing registers, the stack pointer, or the instruction pointer. These tests are run by the iOS Port Prototype workflow on each relevant branch update. Passing them validates this small interpreter subset only; it does not validate PS5 compatibility.
