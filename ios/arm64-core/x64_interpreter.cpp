@@ -97,6 +97,43 @@ bool IsZero(const X64State& state) {
     return (state.rflags & FLAG_ZF) != 0;
 }
 
+bool EffectiveAddress(const X64State& state, const ZydisDecodedInstruction& ins,
+                      const ZydisDecodedOperand& operand, uint64_t& address) {
+    if (operand.type != ZYDIS_OPERAND_TYPE_MEMORY || operand.size != 64) {
+        return false;
+    }
+
+    uint64_t base = 0;
+    if (operand.mem.base == ZYDIS_REGISTER_RIP ||
+        operand.mem.base == ZYDIS_REGISTER_EIP) {
+        base = state.rip + ins.length;
+    } else if (operand.mem.base != ZYDIS_REGISTER_NONE) {
+        const auto* reg = RegisterPointer(const_cast<X64State&>(state), operand.mem.base);
+        if (reg == nullptr) return false;
+        base = *reg;
+    }
+
+    uint64_t index = 0;
+    if (operand.mem.index != ZYDIS_REGISTER_NONE) {
+        const auto* reg = RegisterPointer(const_cast<X64State&>(state), operand.mem.index);
+        if (reg == nullptr) return false;
+        index = *reg * operand.mem.scale;
+    }
+
+    address = base + index + static_cast<uint64_t>(operand.mem.disp.value);
+    return true;
+}
+
+bool MemoryOffset(const X64State& state, uint64_t address, size_t& offset) {
+    if (state.memory == nullptr || address < state.memory_base) return false;
+    const uint64_t delta = address - state.memory_base;
+    if (delta > state.memory_size || state.memory_size - static_cast<size_t>(delta) < sizeof(uint64_t)) {
+        return false;
+    }
+    offset = static_cast<size_t>(delta);
+    return true;
+}
+
 } // namespace
 
 StepReport Step(X64State* state, const uint8_t* code, size_t code_size) {
@@ -125,19 +162,57 @@ StepReport Step(X64State* state, const uint8_t* code, size_t code_size) {
             return Report(StepResult::Halted, ins.length, "ret");
 
         case ZYDIS_MNEMONIC_MOV: {
-            if (ins.operand_count_visible < 2 ||
-                operands[0].type != ZYDIS_OPERAND_TYPE_REGISTER ||
-                operands[0].size != 64) {
+            if (ins.operand_count_visible < 2) {
                 return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
             }
-            auto* dst = RegisterPointer(*state, operands[0].reg.value);
-            uint64_t value = 0;
-            if (dst == nullptr || !Read64BitSource(*state, operands[1], value)) {
-                return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
+
+            // Register destination: immediate/register source or bounded guest-memory load.
+            if (operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+                operands[0].size == 64) {
+                auto* dst = RegisterPointer(*state, operands[0].reg.value);
+                if (dst == nullptr) {
+                    return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
+                }
+                uint64_t value = 0;
+                if (operands[1].type == ZYDIS_OPERAND_TYPE_MEMORY) {
+                    uint64_t address = 0;
+                    size_t offset = 0;
+                    if (!EffectiveAddress(*state, ins, operands[1], address)) {
+                        return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
+                    }
+                    if (!MemoryOffset(*state, address, offset)) {
+                        return Report(StepResult::MemoryFault, ins.length, "mov");
+                    }
+                    std::memcpy(&value, state->memory + offset, sizeof(value));
+                } else if (!Read64BitSource(*state, operands[1], value)) {
+                    return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
+                }
+                *dst = value;
+                state->rip += ins.length;
+                return Report(StepResult::Executed, ins.length, "mov");
             }
-            *dst = value;
-            state->rip += ins.length;
-            return Report(StepResult::Executed, ins.length, "mov");
+
+            // Bounded guest-memory store from a 64-bit register.
+            if (operands[0].type == ZYDIS_OPERAND_TYPE_MEMORY &&
+                operands[0].size == 64 &&
+                operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+                operands[1].size == 64) {
+                const auto* src = RegisterPointer(*state, operands[1].reg.value);
+                uint64_t address = 0;
+                size_t offset = 0;
+                if (src == nullptr ||
+                    !EffectiveAddress(*state, ins, operands[0], address)) {
+                    return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
+                }
+                if (!MemoryOffset(*state, address, offset)) {
+                    return Report(StepResult::MemoryFault, ins.length, "mov");
+                }
+                std::memcpy(state->memory + offset, src, sizeof(*src));
+                state->rip += ins.length;
+                return Report(StepResult::Executed, ins.length, "mov");
+            }
+
+            return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
         }
 
         case ZYDIS_MNEMONIC_XOR: {
