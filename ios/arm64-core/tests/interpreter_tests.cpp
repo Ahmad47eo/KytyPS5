@@ -257,6 +257,29 @@ void TestUnsupportedInstructionDoesNotMutateState() {
           "Unsupported LEA leaves state unchanged");
 }
 
+void TestRunLoopExecutesMultipleInstructions() {
+    KytyIOSCore::X64State state{};
+    state.rip = 0x5000;
+    constexpr std::array<uint8_t, 14> code{
+        0x48, 0xB8, 0x2A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // mov rax, 42
+        0x48, 0x83, 0xC0, 0x01 // add rax, 1
+    };
+    const auto report = KytyIOSCore::Run(&state, code.data(), code.size(), 0x5000, 4);
+    Check(report.result == KytyIOSCore::StepResult::MemoryFault &&
+          report.steps_executed == 2 && state.rax == 43 && state.rip == 0x500E,
+          "Run executes multiple instructions then faults at end of code window");
+}
+
+void TestRunLoopHonorsStepLimit() {
+    KytyIOSCore::X64State state{};
+    state.rip = 0x6000;
+    constexpr std::array<uint8_t, 2> code{0xEB, 0xFE}; // jmp to itself
+    const auto report = KytyIOSCore::Run(&state, code.data(), code.size(), 0x6000, 5);
+    Check(report.result == KytyIOSCore::StepResult::StepLimit &&
+          report.steps_executed == 5 && state.rip == 0x6000,
+          "Run stops an infinite branch loop at its instruction budget");
+}
+
 void TestInvalidArguments() {
     KytyIOSCore::X64State state{};
     constexpr std::array<uint8_t, 1> code{0x90};
@@ -299,6 +322,8 @@ int main() {
     TestJnzTaken();
     TestAddOverflowFlag();
     TestUnsupportedInstructionDoesNotMutateState();
+    TestRunLoopExecutesMultipleInstructions();
+    TestRunLoopHonorsStepLimit();
     TestInvalidArguments();
     TestDecodeError();
 
