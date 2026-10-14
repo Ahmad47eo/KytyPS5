@@ -74,6 +74,20 @@ jobs:
       - name: Compile pinned Zydis decoder for iOS ARM64
         run: cmake --build build/ios-zydis --config Release
 
+      - name: Configure first x86-64 interpreter core for iOS ARM64
+        run: |
+          cmake -S ios/arm64-core \
+            -B build/ios-arm64-core \
+            -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 \
+            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
+
+      - name: Compile first x86-64 interpreter core for iOS ARM64
+        run: cmake --build build/ios-arm64-core --config Release
+
       - name: Package app bundle for inspection
         run: |
           APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/KytyPS5.app"
