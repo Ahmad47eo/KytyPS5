@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   build-ios-shell:
-    name: Build unsigned iOS app shell
+    name: Build iOS shell and ARM64 probe
     runs-on: macos-15
     timeout-minutes: 20
     steps:
@@ -35,7 +35,7 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate --spec ios/project.yml --project ios
 
-      - name: Build for iPhone (unsigned)
+      - name: Build iPhone app shell (unsigned)
         run: |
           xcodebuild \
             -project ios/KytyPS5-iOS.xcodeproj \
@@ -45,6 +45,20 @@ jobs:
             -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+      - name: Configure native iOS ARM64 C++ probe
+        run: |
+          cmake -S ios/port-probe \
+            -B build/ios-arm64-probe \
+            -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 \
+            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
+
+      - name: Compile native iOS ARM64 C++ probe
+        run: cmake --build build/ios-arm64-probe --config Release
 
       - name: Package app bundle for inspection
         run: |
@@ -57,5 +71,13 @@ jobs:
         with:
           name: KytyPS5-iOS-unsigned-shell
           path: build/KytyPS5-unsigned-app.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload ARM64 probe library
+        uses: actions/upload-artifact@v4
+        with:
+          name: KytyPS5-iOS-ARM64-probe
+          path: build/ios-arm64-probe/Release-iphoneos/libkyty_ios_arm64_probe.a
           if-no-files-found: error
           retention-days: 7
