@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <string_view>
 
@@ -101,6 +102,55 @@ void TestRegisterRegisterAdd() {
     Check(report.result == KytyIOSCore::StepResult::Executed &&
           state.rax == 42 && state.rip == 3,
           "ADD register, register executes");
+}
+
+void TestGuestMemoryLoad() {
+    KytyIOSCore::X64State state{};
+    std::array<uint8_t, 16> memory{};
+    const uint64_t expected = 0x1122334455667788ULL;
+    std::memcpy(memory.data() + 8, &expected, sizeof(expected));
+    state.memory = memory.data();
+    state.memory_size = memory.size();
+    state.memory_base = 0x1000;
+    state.rbx = 0x1008;
+    constexpr std::array<uint8_t, 3> code{0x48, 0x8B, 0x03}; // mov rax, [rbx]
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          state.rax == expected && state.rip == 3,
+          "MOV loads a 64-bit value from bounded guest memory");
+}
+
+void TestGuestMemoryStore() {
+    KytyIOSCore::X64State state{};
+    std::array<uint8_t, 16> memory{};
+    state.memory = memory.data();
+    state.memory_size = memory.size();
+    state.memory_base = 0x2000;
+    state.rbx = 0x2008;
+    state.rax = 0xAABBCCDDEEFF0011ULL;
+    constexpr std::array<uint8_t, 3> code{0x48, 0x89, 0x03}; // mov [rbx], rax
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    uint64_t actual = 0;
+    std::memcpy(&actual, memory.data() + 8, sizeof(actual));
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          actual == state.rax && state.rip == 3,
+          "MOV stores a 64-bit register into bounded guest memory");
+}
+
+void TestGuestMemoryFaultIsContained() {
+    KytyIOSCore::X64State state{};
+    std::array<uint8_t, 8> memory{};
+    state.memory = memory.data();
+    state.memory_size = memory.size();
+    state.memory_base = 0x3000;
+    state.rbx = 0x3004;
+    state.rax = 123;
+    state.rip = 0x4000;
+    constexpr std::array<uint8_t, 3> code{0x48, 0x8B, 0x03}; // mov rax, [rbx], out of bounds
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::MemoryFault &&
+          state.rax == 123 && state.rip == 0x4000,
+          "Out-of-range guest-memory read returns MemoryFault without mutation");
 }
 
 void TestCmpSetsZeroFlagWithoutChangingDestination() {
@@ -212,6 +262,9 @@ int main() {
     TestRegisterMove();
     TestXorRegisterRegister();
     TestRegisterRegisterAdd();
+    TestGuestMemoryLoad();
+    TestGuestMemoryStore();
+    TestGuestMemoryFaultIsContained();
     TestCmpSetsZeroFlagWithoutChangingDestination();
     TestCmpSetsCarryAndSignFlags();
     TestJzTaken();
