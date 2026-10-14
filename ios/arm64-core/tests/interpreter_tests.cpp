@@ -1,4 +1,5 @@
 #include "x64_interpreter.h"
+#include "ios_core_c_api.h"
 
 #include <array>
 #include <cstdint>
@@ -346,6 +347,32 @@ void TestRunLoopHonorsStepLimit() {
           "Run stops an infinite branch loop at its instruction budget");
 }
 
+void TestCAbiStepAndRun() {
+    KytyIOSCoreCState state{};
+    state.rip = 0x8000;
+    constexpr std::array<uint8_t, 14> code{
+        0x48, 0xB8, 0x2A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x48, 0x83, 0xC0, 0x01
+    };
+    uint8_t instructionLength = 0;
+    char mnemonic[16]{};
+    const uint32_t stepResult = kyty_ios_core_step(
+        &state, code.data(), 10, &instructionLength, mnemonic, sizeof(mnemonic));
+    const bool stepOkay = stepResult == KYTY_IOS_CORE_EXECUTED &&
+                          instructionLength == 10 && state.gpr[0] == 42 &&
+                          state.rip == 0x800A && std::string_view(mnemonic) == "mov";
+
+    state.rip = 0x8000;
+    state.gpr[0] = 0;
+    size_t steps = 0;
+    const uint32_t runResult = kyty_ios_core_run(
+        &state, code.data(), code.size(), 0x8000, 4, &steps);
+    Check(kyty_ios_core_c_api_version() == 1 && stepOkay &&
+          runResult == KYTY_IOS_CORE_MEMORY_FAULT && steps == 2 &&
+          state.gpr[0] == 43 && state.rip == 0x800E,
+          "C ABI exposes interpreter step/run and synchronizes register state");
+}
+
 void TestInvalidArguments() {
     KytyIOSCore::X64State state{};
     constexpr std::array<uint8_t, 1> code{0x90};
@@ -394,6 +421,7 @@ int main() {
     TestUnsupportedInstructionDoesNotMutateState();
     TestRunLoopExecutesMultipleInstructions();
     TestRunLoopHonorsStepLimit();
+    TestCAbiStepAndRun();
     TestInvalidArguments();
     TestDecodeError();
 
