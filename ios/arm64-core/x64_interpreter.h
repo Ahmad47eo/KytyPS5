@@ -25,6 +25,13 @@ struct X64State {
     uint64_t r15 = 0;
     uint64_t rip = 0;
     uint64_t rflags = 0x2;
+
+    // Optional flat guest-memory window. Guest addresses in [memory_base,
+    // memory_base + memory_size) map to this host buffer; no host pointer is
+    // exposed to guest code.
+    uint8_t* memory = nullptr;
+    size_t memory_size = 0;
+    uint64_t memory_base = 0;
 };
 
 enum class StepResult : uint32_t {
