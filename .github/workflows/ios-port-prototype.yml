@@ -10,6 +10,10 @@ on:
       - "docs/IOS_PORTING.md"
       - ".github/workflows/ios-port-prototype.yml"
 
+concurrency:
+  group: ios-port-prototype-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
