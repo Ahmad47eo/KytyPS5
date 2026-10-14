@@ -65,6 +65,22 @@ void CopyMnemonic(const char* source, char* destination, size_t capacity) {
 
 } // namespace
 
+extern "C" int kyty_ios_core_self_test(uint64_t* out_rax, size_t* out_steps) {
+    constexpr uint64_t codeBase = 0x8000;
+    constexpr uint8_t code[] = {
+        0x48, 0xB8, 0x2A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x48, 0x83, 0xC0, 0x01
+    };
+    KytyIOSCore::X64State state{};
+    state.rip = codeBase;
+    const auto report = KytyIOSCore::Run(&state, code, sizeof(code), codeBase, 4);
+    if (out_rax != nullptr) *out_rax = state.rax;
+    if (out_steps != nullptr) *out_steps = report.steps_executed;
+    return report.result == KytyIOSCore::StepResult::MemoryFault &&
+           report.steps_executed == 2 && state.rax == 43 &&
+           state.rip == codeBase + sizeof(code);
+}
+
 extern "C" uint32_t kyty_ios_core_c_api_version(void) {
     return 1;
 }
