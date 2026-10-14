@@ -235,6 +235,24 @@ StepReport Step(X64State* state, const uint8_t* code, size_t code_size) {
             return Report(StepResult::Executed, ins.length, "call");
         }
 
+        case ZYDIS_MNEMONIC_LEA: {
+            if (ins.operand_count_visible < 2 ||
+                operands[0].type != ZYDIS_OPERAND_TYPE_REGISTER ||
+                operands[0].size != 64 ||
+                operands[1].type != ZYDIS_OPERAND_TYPE_MEMORY ||
+                operands[1].size != 64) {
+                return Report(StepResult::UnsupportedInstruction, ins.length, "lea");
+            }
+            auto* dst = RegisterPointer(*state, operands[0].reg.value);
+            uint64_t address = 0;
+            if (dst == nullptr || !EffectiveAddress(*state, ins, operands[1], address)) {
+                return Report(StepResult::UnsupportedInstruction, ins.length, "lea");
+            }
+            *dst = address;
+            state->rip += ins.length;
+            return Report(StepResult::Executed, ins.length, "lea");
+        }
+
         case ZYDIS_MNEMONIC_MOV: {
             if (ins.operand_count_visible < 2) {
                 return Report(StepResult::UnsupportedInstruction, ins.length, "mov");
