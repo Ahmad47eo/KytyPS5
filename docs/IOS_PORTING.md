@@ -44,17 +44,22 @@ The unsigned .app bundle is not an installable IPA. Signing and installation are
 
 The prototype interpreter now supports a deliberately small flat guest-memory window attached to `X64State`. The window maps guest virtual addresses beginning at `memory_base` onto a caller-owned byte buffer of `memory_size` bytes. The current implementation uses checked bounds and `memcpy` for 64-bit MOV loads/stores, returning `MemoryFault` for missing or out-of-range memory instead of dereferencing an invalid host pointer.
 
-The supported instruction subset now includes NOP, 64-bit MOV immediate/register/memory forms, register/immediate ADD and SUB, CMP, XOR, and JMP/JZ/JNZ. Arithmetic flags are still a partial implementation, and many architectural details are not implemented. RET still halts the prototype rather than popping a guest return address. This remains a test harness, not a connected PS5 runtime.
+The supported instruction subset now includes NOP, 64-bit MOV immediate/register/memory forms, register/immediate ADD and SUB, CMP, XOR, JMP/JZ/JNZ, relative-immediate CALL, RET, and bounded 64-bit PUSH/POP register or immediate forms where implemented. Arithmetic flags are still partial, and many architectural details are not implemented. This remains a test harness, not a connected PS5 runtime.
 
 Next engineering steps:
 1. Validate all new memory tests on the macOS Actions runner and fix any portability or decoder mismatches.
 2. Add width-correct 8/16/32-bit register semantics and memory forms with precise x86 zero-extension/sign-extension rules.
-3. Add stack operations and a real guest return path, then build a small execution loop with instruction and fault limits.
+3. Expand stack/control-flow coverage with fault-containment tests, then build a small execution loop with instruction and fault limits.
 4. Design a proper guest address-space abstraction before connecting any upstream loader code.
 
 
 ## Guest stack and bounded execution loop
 
-The prototype now implements relative-immediate `CALL` and `RET` using the bounded guest-memory window as a stack, plus a `Run` helper that executes sequential instructions inside a supplied code window. The runner stops on unsupported instructions, faults, leaving the code window, or a configurable instruction budget (`StepLimit`). This helps test control flow without allowing an accidental guest infinite loop to run forever.
+The prototype now implements relative-immediate `CALL`, `RET`, and bounded 64-bit `PUSH`/`POP` stack operations using the guest-memory window, plus a `Run` helper that executes instructions inside a supplied code window. The runner stops on unsupported instructions, faults, leaving the code window, or a configurable instruction budget (`StepLimit`). This helps test control flow without allowing an accidental guest infinite loop to run forever.
 
 This is still only a foundation: the current runner reads from one contiguous code buffer and does not implement virtual-memory page tables, a real ELF/SELF loader, PS5 syscalls, AVX/SIMD, threads, or graphics. The stack implementation only covers the basic 64-bit near-call/return form and needs more validation before upstream integration.
+
+
+## Stack operation validation
+
+The host-side test suite now covers a 64-bit register PUSH/POP round trip and checks that out-of-range stack accesses report `MemoryFault` without partially changing registers, the stack pointer, or the instruction pointer. These tests are run by the iOS Port Prototype workflow on each relevant branch update. Passing them validates this small interpreter subset only; it does not validate PS5 compatibility.
