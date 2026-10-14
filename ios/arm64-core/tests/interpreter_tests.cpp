@@ -69,16 +69,93 @@ void TestRetHalts() {
           "RET reports halt without changing RIP");
 }
 
+void TestRegisterRegisterAdd() {
+    KytyIOSCore::X64State state{};
+    state.rax = 12;
+    state.rbx = 30;
+    constexpr std::array<uint8_t, 3> code{0x48, 0x01, 0xD8}; // add rax, rbx
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          state.rax == 42 && state.rip == 3,
+          "ADD register, register executes");
+}
+
+void TestCmpSetsZeroFlagWithoutChangingDestination() {
+    KytyIOSCore::X64State state{};
+    state.rax = 42;
+    constexpr std::array<uint8_t, 4> code{0x48, 0x83, 0xF8, 0x2A}; // cmp rax, 42
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          state.rax == 42 && (state.rflags & (1ULL << 6)) != 0 &&
+          state.rip == 4,
+          "CMP sets ZF and leaves destination unchanged");
+}
+
+void TestCmpSetsCarryAndSignFlags() {
+    KytyIOSCore::X64State state{};
+    state.rax = 1;
+    constexpr std::array<uint8_t, 4> code{0x48, 0x83, 0xF8, 0x02}; // cmp rax, 2
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          (state.rflags & (1ULL << 0)) != 0 &&
+          (state.rflags & (1ULL << 7)) != 0 &&
+          (state.rflags & (1ULL << 6)) == 0,
+          "CMP sets carry/sign and clears zero when lhs is smaller");
+}
+
+void TestJzTaken() {
+    KytyIOSCore::X64State state{};
+    state.rip = 0x1000;
+    state.rflags |= 1ULL << 6;
+    constexpr std::array<uint8_t, 2> code{0x74, 0x05}; // jz +5
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          state.rip == 0x1007,
+          "JZ takes branch when ZF is set");
+}
+
+void TestJzNotTaken() {
+    KytyIOSCore::X64State state{};
+    state.rip = 0x1000;
+    constexpr std::array<uint8_t, 2> code{0x74, 0x05}; // jz +5
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          state.rip == 0x1002,
+          "JZ falls through when ZF is clear");
+}
+
+void TestJnzTaken() {
+    KytyIOSCore::X64State state{};
+    state.rip = 0x1000;
+    constexpr std::array<uint8_t, 2> code{0x75, 0xFC}; // jnz -4
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          state.rip == 0x0FFE,
+          "JNZ applies signed backward displacement");
+}
+
+void TestAddOverflowFlag() {
+    KytyIOSCore::X64State state{};
+    state.rax = 0x7FFFFFFFFFFFFFFFULL;
+    constexpr std::array<uint8_t, 4> code{0x48, 0x83, 0xC0, 0x01};
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          state.rax == 0x8000000000000000ULL &&
+          (state.rflags & (1ULL << 11)) != 0 &&
+          (state.rflags & (1ULL << 7)) != 0,
+          "ADD models signed overflow and sign flags");
+}
+
 void TestUnsupportedInstructionDoesNotMutateState() {
     KytyIOSCore::X64State state{};
     state.rax = 7;
     state.rbx = 9;
     state.rip = 0x3000;
-    constexpr std::array<uint8_t, 3> code{0x48, 0x01, 0xD8}; // add rax, rbx
+    constexpr std::array<uint8_t, 3> code{0x48, 0x89, 0xD8}; // mov rax, rbx
     const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
     Check(report.result == KytyIOSCore::StepResult::UnsupportedInstruction &&
           state.rax == 7 && state.rip == 0x3000,
-          "Unsupported register-register ADD leaves state unchanged");
+          "Unsupported register-register MOV leaves state unchanged");
 }
 
 void TestInvalidArguments() {
@@ -109,6 +186,13 @@ int main() {
     TestAddImmediate();
     TestSubImmediate();
     TestRetHalts();
+    TestRegisterRegisterAdd();
+    TestCmpSetsZeroFlagWithoutChangingDestination();
+    TestCmpSetsCarryAndSignFlags();
+    TestJzTaken();
+    TestJzNotTaken();
+    TestJnzTaken();
+    TestAddOverflowFlag();
     TestUnsupportedInstructionDoesNotMutateState();
     TestInvalidArguments();
     TestDecodeError();
