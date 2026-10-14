@@ -40,7 +40,8 @@ enum class StepResult : uint32_t {
     InvalidArgument = 2,
     DecodeError = 3,
     UnsupportedInstruction = 4,
-    MemoryFault = 5
+    MemoryFault = 5,
+    StepLimit = 6
 };
 
 struct StepReport {
@@ -49,9 +50,20 @@ struct StepReport {
     char mnemonic[32];
 };
 
+struct RunReport {
+    StepResult result;
+    size_t steps_executed;
+    StepReport last_step;
+};
+
 // Executes one explicitly supported x86-64 instruction using an instruction decoder.
 // code points to readable guest instruction bytes; this bring-up core does not JIT.
 StepReport Step(X64State* state, const uint8_t* code, size_t code_size);
+
+// Executes instructions from a contiguous guest-code window until a fault,
+// halt, leaving the window, or max_steps is reached.
+RunReport Run(X64State* state, const uint8_t* code, size_t code_size,
+              uint64_t code_base, size_t max_steps);
 
 // Stable C ABI so a future Swift shell can query the core build version.
 extern "C" uint32_t kyty_ios_core_abi_version();
