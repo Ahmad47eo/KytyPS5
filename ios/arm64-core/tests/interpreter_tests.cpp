@@ -115,6 +115,22 @@ void TestPushPopRoundTrip() {
           "PUSH and POP round-trip a 64-bit register through bounded guest stack");
 }
 
+void TestPopRspUsesPoppedValue() {
+    KytyIOSCore::X64State state{};
+    std::array<uint8_t, 16> memory{};
+    const uint64_t poppedRsp = 0x7777;
+    std::memcpy(memory.data(), &poppedRsp, sizeof(poppedRsp));
+    state.memory = memory.data();
+    state.memory_size = memory.size();
+    state.memory_base = 0x1000;
+    state.rsp = 0x1000;
+    constexpr std::array<uint8_t, 1> code{0x5C}; // pop rsp
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          state.rsp == poppedRsp && state.rip == 1,
+          "POP RSP keeps the popped value rather than overwriting it with stack increment");
+}
+
 void TestPushPopBoundsFaults() {
     KytyIOSCore::X64State state{};
     std::array<uint8_t, 8> memory{};
@@ -360,6 +376,7 @@ int main() {
     TestRetPopsReturnAddress();
     TestCallPushesReturnAddress();
     TestPushPopRoundTrip();
+    TestPopRspUsesPoppedValue();
     TestPushPopBoundsFaults();
     TestRegisterMove();
     TestXorRegisterRegister();
