@@ -158,8 +158,38 @@ StepReport Step(X64State* state, const uint8_t* code, size_t code_size) {
             state->rip += ins.length;
             return Report(StepResult::Executed, ins.length, "nop");
 
-        case ZYDIS_MNEMONIC_RET:
-            return Report(StepResult::Halted, ins.length, "ret");
+        case ZYDIS_MNEMONIC_RET: {
+            size_t offset = 0;
+            if (!MemoryOffset(*state, state->rsp, offset)) {
+                return Report(StepResult::MemoryFault, ins.length, "ret");
+            }
+            uint64_t return_address = 0;
+            std::memcpy(&return_address, state->memory + offset, sizeof(return_address));
+            state->rsp += sizeof(return_address);
+            state->rip = return_address;
+            return Report(StepResult::Executed, ins.length, "ret");
+        }
+
+        case ZYDIS_MNEMONIC_CALL: {
+            if (ins.operand_count_visible < 1 ||
+                operands[0].type != ZYDIS_OPERAND_TYPE_IMMEDIATE) {
+                return Report(StepResult::UnsupportedInstruction, ins.length, "call");
+            }
+            if (state->rsp < sizeof(uint64_t)) {
+                return Report(StepResult::MemoryFault, ins.length, "call");
+            }
+            const uint64_t new_rsp = state->rsp - sizeof(uint64_t);
+            size_t offset = 0;
+            if (!MemoryOffset(*state, new_rsp, offset)) {
+                return Report(StepResult::MemoryFault, ins.length, "call");
+            }
+            const uint64_t return_address = state->rip + ins.length;
+            std::memcpy(state->memory + offset, &return_address, sizeof(return_address));
+            state->rsp = new_rsp;
+            state->rip = static_cast<uint64_t>(
+                static_cast<int64_t>(return_address) + operands[0].imm.value.s);
+            return Report(StepResult::Executed, ins.length, "call");
+        }
 
         case ZYDIS_MNEMONIC_MOV: {
             if (ins.operand_count_visible < 2) {
