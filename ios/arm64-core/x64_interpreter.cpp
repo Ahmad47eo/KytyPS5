@@ -14,7 +14,8 @@ constexpr uint64_t FLAG_OF = 1ULL << 11;
 constexpr uint64_t ARITHMETIC_FLAGS = FLAG_CF | FLAG_PF | FLAG_ZF | FLAG_SF | FLAG_OF;
 
 uint64_t* RegisterPointer(X64State& s, ZydisRegister r) {
-    switch (r) {
+    const auto largest = ZydisRegisterGetLargestEnclosing(ZYDIS_MACHINE_MODE_LONG_64, r);
+    switch (largest) {
         case ZYDIS_REGISTER_RAX: return &s.rax;
         case ZYDIS_REGISTER_RCX: return &s.rcx;
         case ZYDIS_REGISTER_RDX: return &s.rdx;
@@ -33,6 +34,58 @@ uint64_t* RegisterPointer(X64State& s, ZydisRegister r) {
         case ZYDIS_REGISTER_R15: return &s.r15;
         default: return nullptr;
     }
+}
+
+bool IsHighByteRegister(ZydisRegister r) {
+    return r == ZYDIS_REGISTER_AH || r == ZYDIS_REGISTER_CH ||
+           r == ZYDIS_REGISTER_DH || r == ZYDIS_REGISTER_BH;
+}
+
+uint64_t WidthMask(uint8_t width) {
+    return width >= 64 ? UINT64_MAX : ((1ULL << width) - 1ULL);
+}
+
+bool ReadRegister(X64State& state, ZydisRegister reg, uint8_t width, uint64_t& value) {
+    auto* base = RegisterPointer(state, reg);
+    if (base == nullptr || (width != 8 && width != 16 && width != 32 && width != 64)) return false;
+    const unsigned shift = IsHighByteRegister(reg) ? 8U : 0U;
+    value = (*base >> shift) & WidthMask(width);
+    return true;
+}
+
+bool WriteRegister(X64State& state, ZydisRegister reg, uint8_t width, uint64_t value) {
+    auto* base = RegisterPointer(state, reg);
+    if (base == nullptr || (width != 8 && width != 16 && width != 32 && width != 64)) return false;
+    const uint64_t mask = WidthMask(width);
+    value &= mask;
+    if (width == 64 || width == 32) {
+        // x86-64 writes to a 32-bit GPR zero-extend into its 64-bit parent.
+        *base = value;
+    } else {
+        const unsigned shift = IsHighByteRegister(reg) ? 8U : 0U;
+        const uint64_t shiftedMask = mask << shift;
+        *base = (*base & ~shiftedMask) | (value << shift);
+    }
+    return true;
+}
+
+bool ReadOperandValue(X64State& state, const ZydisDecodedOperand& operand,
+                      uint8_t destinationWidth, uint64_t& value) {
+    if (operand.type == ZYDIS_OPERAND_TYPE_REGISTER) {
+        return ReadRegister(state, operand.reg.value, operand.size, value);
+    }
+    if (operand.type == ZYDIS_OPERAND_TYPE_IMMEDIATE) {
+        value = operand.imm.is_signed
+                    ? static_cast<uint64_t>(operand.imm.value.s)
+                    : operand.imm.value.u;
+        value &= WidthMask(destinationWidth);
+        return true;
+    }
+    return false;
+}
+
+bool Read64BitSource(X64State& state, const ZydisDecodedOperand& operand, uint64_t& value) {
+    return ReadOperandValue(state, operand, 64, value);
 }
 
 StepReport Report(StepResult result, uint8_t length, const char* name) {
