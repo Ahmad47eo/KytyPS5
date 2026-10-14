@@ -30,6 +30,11 @@ typedef enum KytyIOSCoreCResult {
 
 uint32_t kyty_ios_core_c_api_version(void);
 
+// Executes a tiny, deterministic interpreter diagnostic. Returns 1 on pass, 0 on failure.
+int kyty_ios_core_self_test(uint64_t* out_rax, size_t* out_steps);
+
+uint32_t kyty_ios_core_c_api_version(void);
+
 uint32_t kyty_ios_core_step(KytyIOSCoreCState* state,
                             const uint8_t* code,
                             size_t code_size,
