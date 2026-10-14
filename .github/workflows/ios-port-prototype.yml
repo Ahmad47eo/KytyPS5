@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - ios-port-prototype
+      - ios-register-width-semantics
     paths:
       - "ios/**"
       - "docs/IOS_PORTING.md"
