@@ -428,7 +428,7 @@ StepReport Step(X64State* state, const uint8_t* code, size_t code_size) {
             const bool subtract = ins.mnemonic != ZYDIS_MNEMONIC_ADD;
             const uint64_t raw = subtract ? lhs - rhs : lhs + rhs;
             const uint64_t result = raw & mask;
-            const bool carry = subtract ? lhs < rhs : raw > mask;
+            const bool carry = subtract ? lhs < rhs : lhs > (mask - rhs);
             SetArithmeticFlags(*state, lhs, rhs, result, subtract, carry, width);
             if (ins.mnemonic != ZYDIS_MNEMONIC_CMP &&
                 !WriteRegister(*state, operands[0].reg.value, width, result)) {
