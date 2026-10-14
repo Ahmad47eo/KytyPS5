@@ -60,14 +60,40 @@ void TestSubImmediate() {
           "SUB RAX, imm8 updates register and RIP");
 }
 
-void TestRetHalts() {
+void TestRetPopsReturnAddress() {
     KytyIOSCore::X64State state{};
+    std::array<uint8_t, 16> memory{};
+    const uint64_t returnAddress = 0x2345;
+    std::memcpy(memory.data(), &returnAddress, sizeof(returnAddress));
+    state.memory = memory.data();
+    state.memory_size = memory.size();
+    state.memory_base = 0x1000;
+    state.rsp = 0x1000;
     state.rip = 0x2000;
     constexpr std::array<uint8_t, 1> code{0xC3};
     const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
-    Check(report.result == KytyIOSCore::StepResult::Halted &&
-          report.instruction_length == 1 && state.rip == 0x2000,
-          "RET reports halt without changing RIP");
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          report.instruction_length == 1 && state.rip == returnAddress &&
+          state.rsp == 0x1008,
+          "RET pops guest return address and advances RSP");
+}
+
+void TestCallPushesReturnAddress() {
+    KytyIOSCore::X64State state{};
+    std::array<uint8_t, 16> memory{};
+    state.memory = memory.data();
+    state.memory_size = memory.size();
+    state.memory_base = 0x1000;
+    state.rsp = 0x1008;
+    state.rip = 0x2000;
+    constexpr std::array<uint8_t, 5> code{0xE8, 0x01, 0x00, 0x00, 0x00}; // call +1
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    uint64_t returnAddress = 0;
+    std::memcpy(&returnAddress, memory.data(), sizeof(returnAddress));
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          state.rip == 0x2006 && state.rsp == 0x1000 &&
+          returnAddress == 0x2005,
+          "CALL pushes next RIP and branches to relative target");
 }
 
 void TestRegisterMove() {
@@ -258,7 +284,8 @@ int main() {
     TestMovImmediate();
     TestAddImmediate();
     TestSubImmediate();
-    TestRetHalts();
+    TestRetPopsReturnAddress();
+    TestCallPushesReturnAddress();
     TestRegisterMove();
     TestXorRegisterRegister();
     TestRegisterRegisterAdd();
