@@ -192,8 +192,15 @@ StepReport Step(X64State* state, const uint8_t* code, size_t code_size) {
             }
             uint64_t value = 0;
             std::memcpy(&value, state->memory + offset, sizeof(value));
-            *dst = value;
-            state->rsp += sizeof(value);
+            const uint64_t next_rsp = state->rsp + sizeof(value);
+            if (dst == &state->rsp) {
+                // POP RSP loads the popped value into RSP; the implicit stack
+                // increment does not overwrite that destination value.
+                state->rsp = value;
+            } else {
+                *dst = value;
+                state->rsp = next_rsp;
+            }
             state->rip += ins.length;
             return Report(StepResult::Executed, ins.length, "pop");
         }
