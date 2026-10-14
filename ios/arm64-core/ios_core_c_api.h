@@ -28,8 +28,6 @@ typedef enum KytyIOSCoreCResult {
     KYTY_IOS_CORE_STEP_LIMIT = 6
 } KytyIOSCoreCResult;
 
-uint32_t kyty_ios_core_c_api_version(void);
-
 // Executes a tiny, deterministic interpreter diagnostic. Returns 1 on pass, 0 on failure.
 int kyty_ios_core_self_test(uint64_t* out_rax, size_t* out_steps);
 
