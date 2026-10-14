@@ -69,6 +69,29 @@ void TestRetHalts() {
           "RET reports halt without changing RIP");
 }
 
+void TestRegisterMove() {
+    KytyIOSCore::X64State state{};
+    state.rbx = 0x123456789ABCDEF0ULL;
+    constexpr std::array<uint8_t, 3> code{0x48, 0x89, 0xD8}; // mov rax, rbx
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          state.rax == 0x123456789ABCDEF0ULL && state.rip == 3,
+          "MOV register, register copies 64-bit value");
+}
+
+void TestXorRegisterRegister() {
+    KytyIOSCore::X64State state{};
+    state.rax = 0xFF00;
+    state.rbx = 0x0F0F;
+    constexpr std::array<uint8_t, 3> code{0x48, 0x31, 0xD8}; // xor rax, rbx
+    const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
+    Check(report.result == KytyIOSCore::StepResult::Executed &&
+          state.rax == 0xF00F && (state.rflags & (1ULL << 6)) == 0 &&
+          (state.rflags & (1ULL << 0)) == 0 &&
+          (state.rflags & (1ULL << 11)) == 0,
+          "XOR computes result and clears CF/OF");
+}
+
 void TestRegisterRegisterAdd() {
     KytyIOSCore::X64State state{};
     state.rax = 12;
@@ -151,11 +174,11 @@ void TestUnsupportedInstructionDoesNotMutateState() {
     state.rax = 7;
     state.rbx = 9;
     state.rip = 0x3000;
-    constexpr std::array<uint8_t, 3> code{0x48, 0x89, 0xD8}; // mov rax, rbx
+    constexpr std::array<uint8_t, 3> code{0x48, 0x8D, 0x03}; // lea rax, [rbx]
     const auto report = KytyIOSCore::Step(&state, code.data(), code.size());
     Check(report.result == KytyIOSCore::StepResult::UnsupportedInstruction &&
           state.rax == 7 && state.rip == 0x3000,
-          "Unsupported register-register MOV leaves state unchanged");
+          "Unsupported LEA leaves state unchanged");
 }
 
 void TestInvalidArguments() {
@@ -186,6 +209,8 @@ int main() {
     TestAddImmediate();
     TestSubImmediate();
     TestRetHalts();
+    TestRegisterMove();
+    TestXorRegisterRegister();
     TestRegisterRegisterAdd();
     TestCmpSetsZeroFlagWithoutChangingDestination();
     TestCmpSetsCarryAndSignFlags();
